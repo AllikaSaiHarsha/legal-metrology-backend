@@ -51,10 +51,9 @@ os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Allow Next.js frontend to connect
-origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3001,http://10.33.203.29:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
