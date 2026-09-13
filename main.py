@@ -34,22 +34,26 @@ logging.basicConfig(level=logging.INFO)
 os.makedirs("uploads", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
-gemini_client = None
-if os.getenv("GEMINI_API_KEY"):
-    try:
-        gemini_client = genai.Client()
-        logger.info("Gemini AI loaded successfully.")
-    except Exception as e:
-        logger.error(f"Failed to initialize Gemini: {e}")
+def get_api_keys():
+    # Reload .env so newly pasted keys take effect immediately
+    load_dotenv(override=True)
+    raw = os.getenv("GEMINI_API_KEYS") or os.getenv("GEMINI_API_KEY") or ""
+    keys = [k.strip() for k in raw.replace("\n", ",").split(",") if k.strip()]
+    return keys
+
+def get_gemini_client(api_key: str):
+    return genai.Client(api_key=api_key)
 
 @app.get("/api/v1/health")
 async def health_check():
-    return {"status": "ok"}
+    keys = get_api_keys()
+    return {"status": "ok", "keys_configured": len(keys)}
 
 @app.post("/api/v1/analyze")
 async def analyze_image(request: Request, file: UploadFile = File(...)):
-    if not gemini_client:
-        raise HTTPException(status_code=500, detail="Gemini API Key missing")
+    api_keys = get_api_keys()
+    if not api_keys:
+        raise HTTPException(status_code=500, detail="Gemini API Key missing in .env (set GEMINI_API_KEY or GEMINI_API_KEYS)")
 
     try:
         contents = await file.read()
@@ -125,11 +129,17 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
         response = None
         last_exception = None
 
-        for model_name in candidate_models:
-            for attempt in range(2):
+        for key_idx, key in enumerate(api_keys):
+            try:
+                client = get_gemini_client(key)
+            except Exception as ce:
+                logger.error(f"Failed to create Gemini client with key #{key_idx + 1}: {ce}")
+                continue
+
+            for model_name in candidate_models:
                 try:
-                    logger.info(f"Sending image to {model_name} (attempt {attempt + 1})...")
-                    response = gemini_client.models.generate_content(
+                    logger.info(f"Analyzing with key #{key_idx + 1} on {model_name}...")
+                    response = client.models.generate_content(
                         model=model_name,
                         contents=[
                             types.Part.from_bytes(data=contents, mime_type="image/jpeg"),
@@ -137,22 +147,28 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
                         ]
                     )
                     if response and response.text:
+                        logger.info(f"Successfully analyzed image with key #{key_idx + 1} on {model_name}")
                         break
                 except Exception as ge:
                     last_exception = ge
                     err_str = str(ge)
-                    logger.warning(f"Model {model_name} attempt {attempt + 1} error: {err_str[:120]}")
-                    if "503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str or "RESOURCE_EXHAUSTED" in err_str:
-                        time.sleep(2)
+                    logger.warning(f"Key #{key_idx + 1} on {model_name} error: {err_str[:120]}")
+                    if "RESOURCE_EXHAUSTED" in err_str or "429" in err_str:
+                        # Key quota exhausted! Break from models and rotate to next key immediately
+                        break
+                    elif "503" in err_str or "UNAVAILABLE" in err_str:
+                        time.sleep(1)
                         continue
                     else:
-                        break
+                        continue
             if response and response.text:
-                logger.info(f"Successfully analyzed image with {model_name}")
                 break
 
         if not response or not response.text:
-            raise HTTPException(status_code=500, detail=f"Vision API error: {last_exception}")
+            raise HTTPException(
+                status_code=429 if ("RESOURCE_EXHAUSTED" in str(last_exception) or "429" in str(last_exception)) else 500,
+                detail=f"All configured Gemini API keys or models reached their quota/limit: {last_exception}"
+            )
 
         response_text = response.text.strip()
         if response_text.startswith("```json"):
