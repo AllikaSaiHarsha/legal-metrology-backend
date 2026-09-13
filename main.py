@@ -115,7 +115,7 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
         5. Expiry Date / Best Before Date (if applicable)
         6. Consumer Care / Customer Care contact details (email, phone, address)
         7. Manufacturer / Packer / Importer Name & Address
-        8. Country of Origin (for imported goods)
+        8. Country of Origin (Only required for imported goods; for domestic goods or if not visible, do not mark as Failed)
         9. Unit Sale Price (USP)
 
         For EACH detection:
@@ -204,7 +204,17 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
         data["image_url"] = image_url
         
         # Parse real Gemini 2D bounding boxes into x, y, width, height (normalized 0-1000 scale)
+        # Filter out Country of Origin error when missing/failed (only mandatory for imported goods)
+        sanitized_detections = []
         for det in data.get("detections", []):
+            cat = (det.get("category") or "").strip().lower()
+            lbl = (det.get("label") or "").strip().lower()
+            status = (det.get("status") or "").strip()
+
+            if "country of origin" in cat or "country of origin" in lbl:
+                if status == "Failed" or "missing" in lbl or "not visible" in lbl:
+                    continue  # Ignore Country of Origin error
+
             box_2d = det.get("box_2d") or [0, 0, 0, 0]
             if isinstance(box_2d, list) and len(box_2d) == 4:
                 ymin, xmin, ymax, xmax = box_2d
@@ -220,6 +230,9 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
             else:
                 det["box"] = {"x": 0, "y": 0, "width": 0, "height": 0}
 
+            sanitized_detections.append(det)
+
+        data["detections"] = sanitized_detections
         return data
 
     except Exception as e:
