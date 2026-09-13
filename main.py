@@ -46,6 +46,15 @@ def get_api_keys():
 def get_gemini_client(api_key: str):
     return genai.Client(api_key=api_key)
 
+@app.get("/")
+async def root():
+    return {
+        "service": "Legal Metrology Vision API",
+        "status": "online",
+        "docs": "/docs",
+        "health": "/api/v1/health"
+    }
+
 @app.get("/api/v1/health")
 async def health_check():
     keys = get_api_keys()
