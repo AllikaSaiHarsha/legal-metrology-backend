@@ -121,30 +121,38 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
         }
         """
 
-        max_retries = 3
+        candidate_models = ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash"]
         response = None
-        for attempt in range(max_retries):
-            try:
-                logger.info(f"Sending image to Gemini 2.5 Flash for spatial analysis (attempt {attempt + 1})...")
-                response = gemini_client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=[
-                        types.Part.from_bytes(data=contents, mime_type="image/jpeg"),
-                        prompt
-                    ]
-                )
+        last_exception = None
+
+        for model_name in candidate_models:
+            for attempt in range(2):
+                try:
+                    logger.info(f"Sending image to {model_name} (attempt {attempt + 1})...")
+                    response = gemini_client.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            types.Part.from_bytes(data=contents, mime_type="image/jpeg"),
+                            prompt
+                        ]
+                    )
+                    if response and response.text:
+                        break
+                except Exception as ge:
+                    last_exception = ge
+                    err_str = str(ge)
+                    logger.warning(f"Model {model_name} attempt {attempt + 1} error: {err_str[:120]}")
+                    if "503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                        time.sleep(2)
+                        continue
+                    else:
+                        break
+            if response and response.text:
+                logger.info(f"Successfully analyzed image with {model_name}")
                 break
-            except Exception as ge:
-                err_str = str(ge)
-                if attempt < max_retries - 1 and ("503" in err_str or "429" in err_str or "UNAVAILABLE" in err_str):
-                    wait_sec = (attempt + 1) * 3
-                    logger.warning(f"Gemini API busy (503/429). Retrying in {wait_sec}s...")
-                    time.sleep(wait_sec)
-                    continue
-                raise ge
 
         if not response or not response.text:
-            raise HTTPException(status_code=500, detail="Empty response from Gemini Vision API")
+            raise HTTPException(status_code=500, detail=f"Vision API error: {last_exception}")
 
         response_text = response.text.strip()
         if response_text.startswith("```json"):
