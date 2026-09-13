@@ -12,8 +12,10 @@ import base64
 import time
 from google import genai
 from google.genai import types
-
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 load_dotenv()
 
@@ -86,8 +88,11 @@ async def analyze_image(request: Request, file: UploadFile = File(...)):
 
         # Get actual image dimensions
         try:
-            with Image.open(io.BytesIO(contents)) as pil_img:
-                real_width, real_height = pil_img.size
+            if Image is not None:
+                with Image.open(io.BytesIO(contents)) as pil_img:
+                    real_width, real_height = pil_img.size
+            else:
+                real_width, real_height = 1000, 1000
         except Exception:
             real_width, real_height = 1000, 1000
         
