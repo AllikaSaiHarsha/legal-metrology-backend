@@ -115,6 +115,57 @@ legal-metrology-backend/
 
 ---
 
+## 📡 API Usage & Examples
+
+### Analyze a Package Label (`POST /api/v1/analyze`)
+Send a packaging photograph (`multipart/form-data`) to extract Rule 6 compliance declarations and 2D spatial bounding boxes:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/analyze" \
+  -H "accept: application/json" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@/path/to/packaging_photo.jpg"
+```
+
+#### Sample JSON Response:
+```json
+{
+  "product_name": "Premium Whole Wheat Bread",
+  "manufacturer": "Sunrise Bakers Ltd, Industrial Area, Hyderabad",
+  "filename": "f47ac10b-58cc-4372-a567-0e02b2c3d479.jpg",
+  "original_width": 1000,
+  "original_height": 1000,
+  "real_width": 1280,
+  "real_height": 960,
+  "image_url": "http://localhost:8000/uploads/f47ac10b-58cc-4372-a567-0e02b2c3d479.jpg",
+  "detections": [
+    {
+      "category": "MRP",
+      "label": "MRP ₹ 45.00 (Incl. of all taxes)",
+      "status": "Passed",
+      "box_2d": [780, 150, 840, 480],
+      "box": { "x": 150, "y": 780, "width": 330, "height": 60 }
+    },
+    {
+      "category": "Unit Sale Price",
+      "label": "₹ 0.11 / g",
+      "status": "Passed",
+      "box_2d": [850, 150, 890, 310],
+      "box": { "x": 150, "y": 850, "width": 160, "height": 40 }
+    },
+    {
+      "category": "Net Weight",
+      "label": "Net Weight: 400 g",
+      "status": "Passed",
+      "box_2d": [720, 150, 765, 380],
+      "box": { "x": 150, "y": 720, "width": 230, "height": 45 }
+    }
+  ]
+}
+```
+
+---
+
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
