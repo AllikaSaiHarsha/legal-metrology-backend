@@ -25,6 +25,14 @@ Contrary to legacy templates that relied on local OpenCV and Tesseract OCR, this
 
 ---
 
+## 📸 Interactive API Documentation (Swagger UI)
+
+<div align="center">
+  <img src="docs/swagger-preview.png" alt="FastAPI Swagger Documentation" width="100%" />
+</div>
+
+---
+
 ## 📂 Modular Architecture
 
 ```
